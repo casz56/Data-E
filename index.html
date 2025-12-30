@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Data E • Huila</title>
+
+  <!-- UI / Charts / Export -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root{
+      --inf-primary:#006C72;
+      --inf-secondary:#CCD400;
+      --inf-dark:#004651;
+      --inf-bg:#f5f5f5;
+    }
+    html, body { font-family: "Tw Cen MT", "Trebuchet MS", Arial, sans-serif; background: var(--inf-bg); }
+    h1,h2,h3,h4,h5,h6, thead th { font-weight: 800 !important; }
+    .btn-primary{ background: var(--inf-dark); color:#fff; }
+    .btn-primary:hover{ filter: brightness(1.05); }
+    .btn-secondary{ background: var(--inf-primary); color:#fff; }
+    .btn-secondary:hover{ filter: brightness(1.06); }
+    .btn-accent{ background: var(--inf-secondary); color: var(--inf-dark); }
+    .btn-accent:hover{ filter: brightness(0.98); }
+    tbody td { font-weight: 400 !important; }
+    .card { border:1px solid #e2e8f0; box-shadow: 0 10px 24px rgba(15,23,42,.08); border-radius: 1.25rem; background:#fff; }
+    .muted { color:#64748b; }
+    .chip { border:1px solid #e2e8f0; border-radius:999px; padding:.35rem .7rem; font-size:12px; background:#fff; }
+    .chip-acc{ background: color-mix(in srgb, var(--inf-secondary) 35%, white); color: var(--inf-dark); border-color: color-mix(in srgb, var(--inf-secondary) 55%, #e2e8f0); }
+  </style>
+
+  <!-- Leaflet (mapa sin API key) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+</head>
+
+<body class="min-h-screen flex flex-col text-slate-900">
+
+  <!-- HEADER -->
+  <header class="bg-[var(--inf-primary)] text-white px-6 py-3 shadow-xl flex flex-col md:flex-row justify-between items-center gap-4 z-20">
+    <div class="flex items-center gap-4">
+      <div class="w-10 h-10 rounded-2xl bg-white/15 grid place-items-center font-black">E</div>
+      <div>
+        <div class="text-lg font-extrabold leading-tight">Dashboard Data E</div>
+        <div class="text-xs opacity-90">Cargue Excel • Filtros • Gráficas • Exportación PDF/Excel</div>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="chip chip-acc">Huila</span>
+      <button id="btnExportPDF" class="px-3 py-2 rounded-xl text-xs font-extrabold uppercase tracking-widest btn-primary">Exportar PDF</button>
+      <button id="btnExportXLSX" class="px-3 py-2 rounded-xl text-xs font-extrabold uppercase tracking-widest btn-secondary">Exportar Excel</button>
+    </div>
+  </header>
+
+  <main class="flex-1 px-6 py-6 max-w-7xl w-full mx-auto">
+    <!-- Load -->
+    <section class="card p-5 mb-6">
+      <div class="flex flex-col lg:flex-row lg:items-end gap-4 justify-between">
+        <div>
+          <h2 class="text-base font-extrabold">1) Cargar archivo Excel</h2>
+          <p class="text-sm muted mt-1">Seleccione el archivo <b>Data E.xlsx</b> (o uno con la misma estructura) para alimentar el tablero.</p>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+          <div class="w-full">
+            <label class="text-xs font-extrabold uppercase tracking-widest muted">Archivo</label>
+            <input id="fileXlsx" type="file" accept=".xlsx,.xls" class="mt-2 w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-extrabold file:bg-[var(--inf-secondary)] file:text-[var(--inf-dark)] bg-white border border-slate-200 rounded-xl px-3 py-2" />
+          </div>
+
+          <button id="btnLoadSample" class="px-3 py-2 rounded-xl text-xs font-extrabold uppercase tracking-widest btn-accent">
+            Cargar demo (si no hay archivo)
+          </button>
+        </div>
+      </div>
+
+      <div id="loadStatus" class="mt-4 text-sm muted"></div>
+    </section>
+
+    <!-- Filters -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+      <div class="card p-5 lg:col-span-12">
+        <h2 class="text-base font-extrabold">2) Filtros</h2>
+
+        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label class="text-xs font-extrabold uppercase tracking-widest muted">Año</label>
+            <select id="fYear" class="mt-2 w-full text-sm border border-slate-200 rounded-xl px-3 py-2 bg-white"></select>
+          </div>
+
+          <div>
+            <label class="text-xs font-extrabold uppercase tracking-widest muted">Municipio</label>
+            <select id="fMunicipio" class="mt-2 w-full text-sm border border-slate-200 rounded-xl px-3 py-2 bg-white"></select>
+          </div>
+
+          <div>
+            <label class="text-xs font-extrabold uppercase tracking-widest muted">Zona</label>
+            <select id="fZona" class="mt-2 w-full text-sm border border-slate-200 rounded-xl px-3 py-2 bg-white"></select>
+          </div>
+
+          <div>
+            <label class="text-xs font-extrabold uppercase tracking-widest muted">Buscar (Nombre/Cédula/Correo)</label>
+            <input id="fSearch" type="search" placeholder="Ej: Sandoval, 1223..., correo@..." class="mt-2 w-full text-sm border border-slate-200 rounded-xl px-3 py-2 bg-white" />
+          </div>
+        </div>
+
+        <div class="mt-4 flex flex-wrap gap-2 items-center">
+          <button id="btnClear" class="px-3 py-2 rounded-xl text-xs font-extrabold uppercase tracking-widest btn-primary">Limpiar filtros</button>
+          <span id="chipInfo" class="chip chip-acc"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- KPIs -->
+    <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+      <div class="card p-5">
+        <div class="text-xs font-extrabold uppercase tracking-widest muted">Registros</div>
+        <div id="kpiTotal" class="text-3xl font-extrabold mt-2">—</div>
+        <div class="text-xs muted mt-1">Total filtrado</div>
+      </div>
+      <div class="card p-5">
+        <div class="text-xs font-extrabold uppercase tracking-widest muted">Municipios</div>
+        <div id="kpiMunicipios" class="text-3xl font-extrabold mt-2">—</div>
+        <div class="text-xs muted mt-1">Con registros filtrados</div>
+      </div>
+      <div class="card p-5">
+        <div class="text-xs font-extrabold uppercase tracking-widest muted">Lugares de votación</div>
+        <div id="kpiLugares" class="text-3xl font-extrabold mt-2">—</div>
+        <div class="text-xs muted mt-1">Únicos (filtrado)</div>
+      </div>
+      <div class="card p-5">
+        <div class="text-xs font-extrabold uppercase tracking-widest muted">Comunas</div>
+        <div id="kpiComunas" class="text-3xl font-extrabold mt-2">—</div>
+        <div class="text-xs muted mt-1">Únicas (filtrado)</div>
+      </div>
+    </section>
+
+    <!-- Charts -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+      <div class="card p-5 lg:col-span-7">
+        <div class="flex items-end justify-between gap-4">
+          <div>
+            <h3 class="text-sm font-extrabold uppercase tracking-widest text-slate-800">Top municipios</h3>
+            <p class="text-xs muted mt-1">Barras • # registros</p>
+          </div>
+          <select id="topN" class="text-xs font-extrabold uppercase tracking-widest bg-white border border-slate-200 rounded-xl px-3 py-2">
+            <option value="5">Top 5</option>
+            <option value="10" selected>Top 10</option>
+            <option value="15">Top 15</option>
+            <option value="25">Top 25</option>
+          </select>
+        </div>
+        <div class="mt-4">
+          <canvas id="chartTopMunicipios"></canvas>
+        </div>
+      </div>
+
+      <div class="card p-5 lg:col-span-5">
+        <div>
+          <h3 class="text-sm font-extrabold uppercase tracking-widest text-slate-800">Distribución por zona</h3>
+          <p class="text-xs muted mt-1">Torta • participación %</p>
+        </div>
+        <div class="mt-4">
+          <canvas id="chartZona"></canvas>
+        </div>
+      </div>
+
+      
+      <div class="card p-5 lg:col-span-12">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h3 class="text-sm font-extrabold uppercase tracking-widest text-slate-800">Mapa interactivo del Huila</h3>
+            <p class="text-xs muted mt-1">Mapa • clic en un municipio para filtrar</p>
+          </div>
+          <div class="text-xs muted">
+            <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200">
+              Tip: use el filtro <b>Municipio</b> o haga clic en el marcador.
+            </span>
+          </div>
+        </div>
+        <div class="mt-4">
+          <div id="mapHuila" style="height:360px; width:100%; border-radius:16px; overflow:hidden;"></div>
+          <div class="mt-2 text-xs muted" id="mapHuilaInfo">Municipios en el filtro: 0</div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Table -->
+    <section class="card p-5">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h3 class="text-sm font-extrabold uppercase tracking-widest text-slate-800">Tabla de registros</h3>
+          <p class="text-xs muted mt-1">Se muestra el resultado filtrado (máx. 2000 filas en pantalla por rendimiento).</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <label class="text-xs font-extrabold uppercase tracking-widest muted">Filas</label>
+          <select id="pageSize" class="text-xs font-extrabold uppercase tracking-widest bg-white border border-slate-200 rounded-xl px-3 py-2">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+
+          <div class="flex items-center gap-2">
+            <button id="btnPrev" class="px-3 py-2 rounded-xl text-xs font-extrabold uppercase tracking-widest btn-secondary">Anterior</button>
+            <button id="btnNext" class="px-3 py-2 rounded-xl text-xs font-extrabold uppercase tracking-widest btn-secondary">Siguiente</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 overflow-auto border border-slate-200 rounded-2xl">
+        <table class="min-w-[1200px] w-full text-sm">
+          <thead class="bg-slate-50 border-b border-slate-200">
+            <tr class="text-left">
+              <th class="p-3">Año</th>
+              <th class="p-3">No.</th>
+              <th class="p-3">Nombre</th>
+              <th class="p-3">Cédula</th>
+              <th class="p-3">Celular</th>
+              <th class="p-3">Municipio</th>
+              <th class="p-3">Lugar de votación</th>
+              <th class="p-3">Dirección</th>
+              <th class="p-3">Mesa</th>
+              <th class="p-3">Comuna</th>
+              <th class="p-3">Correo</th>
+              <th class="p-3">Zona</th>
+            </tr>
+          </thead>
+          <tbody id="tbody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <div id="tableInfo" class="text-xs muted"></div>
+        <div class="text-xs muted">Tip: Use el botón <b>Exportar PDF</b> / <b>Exportar Excel</b> para el filtrado actual.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="px-6 py-6 text-center text-xs muted">
+    Dashboard basado en la estructura del Excel (Data E). Recomendación: mantener los encabezados de columna.
+  </footer>
+
+<script>
+/* ===========================
+   0) Helpers
+=========================== */
+const $ = (id) => document.getElementById(id);
+const norm = (v) => (v ?? "").toString().trim();
+const upper = (v) => norm(v).toUpperCase();
+const safeNum = (v) => {
+  const s = norm(v).replace(/[^\d.-]/g,'');
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+};
+const uniq = (arr) => Array.from(new Set(arr.filter(v => norm(v) !== ""))).sort((a,b)=> a.localeCompare(b, 'es', {numeric:true}));
+
+function countBy(arr, keyFn){
+  const m = new Map();
+  for(const x of arr){
+    const k = keyFn(x);
+    if(!k) continue;
+    m.set(k, (m.get(k) ?? 0) + 1);
+  }
+  return Array.from(m.entries()).map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v);
+}
+function pct(part, total){
+  if(!total) return "0.0%";
+  return (100*part/total).toFixed(1) + "%";
+}
+
+/* ===========================
+   1) Data model (from Excel)
+   Expected columns (as in your file):
+   AÑO, NO., NOMBRE, No. CEDULA, No. Celular, DEPARTAMENTO, MUNICIPIO,
+   LUGAR DE VOTACION, DIRECCION, MESA, COMUNA, REFIERE, CORREO ELECTRONICO,
+   OBSERVACIONES, REFERENTE, DATA, MESA2, COMUNA3, ZONA
+=========================== */
+let RAW = [];     // normalized rows
+let FILTERED = []; // filtered rows
+
+function normalizeRow(r){
+  // tolerant mapping (handles minor header variations)
+  const get = (...keys) => {
+    for(const k of keys){
+      if(r[k] !== undefined) return r[k];
+      // try case-insensitive match
+      const found = Object.keys(r).find(h => upper(h) === upper(k));
+      if(found) return r[found];
+    }
+    return "";
+  };
+
+  return {
+    year: safeNum(get("AÑO","ANO","AÑO ")) ?? norm(get("AÑO","ANO")),
+    no: safeNum(get("NO.","NO","N°","No.","NO. ")) ?? norm(get("NO.","NO","N°","No.")),
+    nombre: norm(get("NOMBRE","NOMBRES","NOMBRE ")),
+    cedula: norm(get("No. CEDULA","CEDULA","No CEDULA","No. Cedula","No. CÉDULA")),
+    celular: norm(get("No. Celular","CELULAR","No CELULAR","No. CELULAR")),
+    departamento: norm(get("DEPARTAMENTO")),
+    municipio: norm(get("MUNICIPIO","MUNICÍPIO")),
+    lugar: norm(get("LUGAR DE VOTACION","LUGAR DE VOTACIÓN","PUESTO","LUGAR VOTACION")),
+    direccion: norm(get("DIRECCION","DIRECCIÓN")),
+    mesa: norm(get("MESA","MESA2","MESA 2")),
+    comuna: norm(get("COMUNA","COMUNA3","COMUNA 3")),
+    refiere: norm(get("REFIERE")),
+    correo: norm(get("CORREO ELECTRONICO","CORREO ELECTRÓNICO","EMAIL","CORREO")),
+    observaciones: norm(get("OBSERVACIONES")),
+    referente: norm(get("REFERENTE")),
+    data: norm(get("DATA")),
+    zona: norm(get("ZONA")),
+  };
+}
+
+function setStatus(msg, isError=false){
+  $("loadStatus").innerHTML = isError
+    ? `<span class="text-red-600 font-extrabold">${msg}</span>`
+    : `<span class="text-slate-700">${msg}</span>`;
+}
+
+function loadFromRows(rows){
+  RAW = rows.map(normalizeRow).filter(r => norm(r.nombre) || norm(r.cedula) || norm(r.municipio) || norm(r.lugar));
+  setStatus(`Archivo cargado: <b>${RAW.length.toLocaleString('es-CO')}</b> registros (normalizados).`);
+  initFilters();
+  applyFilters();
+}
+
+/* ===========================
+   2) Excel loader
+=========================== */
+$("fileXlsx").addEventListener("change", async (e)=>{
+  const f = e.target.files?.[0];
+  if(!f) return;
+  try{
+    setStatus("Leyendo archivo...");
+
+    const data = await f.arrayBuffer();
+    const wb = XLSX.read(data, {type:"array"});
+    const sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const json = XLSX.utils.sheet_to_json(ws, {defval:""});
+    loadFromRows(json);
+  }catch(err){
+    console.error(err);
+    setStatus("No se pudo leer el Excel. Verifique que sea .xlsx y que tenga encabezados.", true);
+  }
+});
+
+// Demo if needed (small sample)
+$("btnLoadSample").addEventListener("click", ()=>{
+  const demo = [
+    {"AÑO":2022,"NO.":1,"NOMBRE":"LUIS ALBERTO RINCON","No. CEDULA":"12233664","No. Celular":"3222856833","DEPARTAMENTO":"HUILA","MUNICIPIO":"ACEVEDO","LUGAR DE VOTACION":"PUESTO CABECERA MUNICIPAL","DIRECCION":"ESCUELA CENTRAL","MESA":"2","COMUNA":"I.E. DEL MUNICIPIO","CORREO ELECTRONICO":"","ZONA":"URBANA"},
+    {"AÑO":2023,"NO.":4,"NOMBRE":"SANDRA PATRICIA TOVAR VARGAS","No. CEDULA":"26437582","No. Celular":"3142538115","DEPARTAMENTO":"HUILA","MUNICIPIO":"ACEVEDO","LUGAR DE VOTACION":"PUESTO CABECERA MUNICIPAL","DIRECCION":"ESCUELA CENTRAL","MESA":"2","COMUNA":"I.E. DEL MUNICIPIO","CORREO ELECTRONICO":"","ZONA":"URBANA"},
+    {"AÑO":2022,"NO.":15,"NOMBRE":"EJEMPLO PERSONA","No. CEDULA":"99999999","No. Celular":"3000000000","DEPARTAMENTO":"HUILA","MUNICIPIO":"NEIVA","LUGAR DE VOTACION":"COLEGIO ABC","DIRECCION":"CRA 1 #2-3","MESA":"10","COMUNA":"COMUNA 6","CORREO ELECTRONICO":"persona@correo.com","ZONA":"URBANA"},
+  ];
+  loadFromRows(demo);
+});
+
+/* ===========================
+   3) Filters
+=========================== */
+function initFilters(){
+  const years = uniq(RAW.map(r => String(r.year)).filter(v => v && v !== "null" && v !== "NaN"));
+  const municipios = uniq(RAW.map(r => r.municipio));
+  const zonas = uniq(RAW.map(r => r.zona));
+
+  fillSelect("fYear", ["(Todos)"].concat(years));
+  fillSelect("fMunicipio", ["(Todos)"].concat(municipios));
+  fillSelect("fZona", ["(Todos)"].concat(zonas));
+  $("fSearch").value = "";
+  $("topN").value = "10";
+
+  $("chipInfo").textContent = "Listo: ajuste filtros para ver resultados";
+}
+
+function fillSelect(id, items){
+  const el = $(id);
+  el.innerHTML = "";
+  for(const it of items){
+    const opt = document.createElement("option");
+    opt.value = it;
+    opt.textContent = it;
+    el.appendChild(opt);
+  }
+  el.value = "(Todos)";
+}
+
+["fYear","fMunicipio","fZona","topN","pageSize"].forEach(id => $(id).addEventListener("change", ()=>applyFilters()));
+$("fSearch").addEventListener("input", ()=>applyFilters());
+
+$("btnClear").addEventListener("click", ()=>{
+  if(!RAW.length) return;
+  $("fYear").value = "(Todos)";
+  $("fMunicipio").value = "(Todos)";
+  $("fZona").value = "(Todos)";
+  $("fSearch").value = "";
+  $("topN").value = "10";
+  currentPage = 1;
+  applyFilters();
+});
+
+function applyFilters(){
+  if(!RAW.length){
+    setStatus("Cargue un Excel para iniciar (o use el demo).");
+    renderEmpty();
+    return;
+  }
+
+  const fy = $("fYear").value;
+  const fm = $("fMunicipio").value;
+  const fz = $("fZona").value;
+  const q = upper($("fSearch").value);
+
+  FILTERED = RAW.filter(r => {
+    if(fy !== "(Todos)" && String(r.year) !== fy) return false;
+    if(fm !== "(Todos)" && upper(r.municipio) !== upper(fm)) return false;
+    if(fz !== "(Todos)" && upper(r.zona) !== upper(fz)) return false;
+    if(q){
+      const blob = upper([r.nombre,r.cedula,r.correo,r.celular,r.lugar,r.direccion,r.comuna,r.refiere,r.referente].join(" "));
+      if(!blob.includes(q)) return false;
+    }
+    return true;
+  });
+
+  $("chipInfo").textContent = `Filtrado: ${FILTERED.length.toLocaleString('es-CO')} registros`;
+  updateKPIs();
+  updateCharts();
+  currentPage = 1;
+  renderTable();
+}
+
+/* ===========================
+   4) KPIs
+=========================== */
+function updateKPIs(){
+  $("kpiTotal").textContent = FILTERED.length.toLocaleString('es-CO');
+  $("kpiMunicipios").textContent = uniq(FILTERED.map(r => r.municipio)).length.toLocaleString('es-CO');
+  $("kpiLugares").textContent = uniq(FILTERED.map(r => r.lugar)).length.toLocaleString('es-CO');
+  $("kpiComunas").textContent = uniq(FILTERED.map(r => r.comuna)).length.toLocaleString('es-CO');
+}
+
+/* ===========================
+   5) Charts (Chart.js)
+=========================== */
+let cTop = null, cZona = null, cYear = null;
+
+function tooltipCountWithPct(context, total){
+  const v = context.parsed ?? context.raw ?? 0;
+  return ` ${v.toLocaleString('es-CO')} (${pct(v,total)})`;
+}
+
+
+/* ===========================
+   5.1) Mapa interactivo (Leaflet / OSM)
+=========================== */
+let huilaMap = null;
+let huilaLayer = null;
+
+// Coordenadas aproximadas (cabeceras municipales - Huila)
+const HUILA_COORDS = {
+  "NEIVA": [2.935, -75.289],
+  "PITALITO": [1.853, -76.051],
+  "GARZON": [2.195, -75.627],
+  "LA PLATA": [2.393, -75.892],
+  "CAMPOALEGRE": [2.684, -75.325],
+  "RIVERA": [2.777, -75.256],
+  "TELLO": [3.067, -75.138],
+  "PALERMO": [2.888, -75.438],
+  "AIPE": [3.223, -75.236],
+  "GIGANTE": [2.386, -75.547],
+  "HOBO": [2.582, -75.450],
+  "YAGUARA": [2.665, -75.517],
+  "TARQUI": [2.113, -75.823],
+  "ALTAMIRA": [2.063, -75.787],
+  "TIMANA": [1.971, -75.932],
+  "SUAZA": [1.975, -75.812],
+  "ACEVEDO": [1.805, -75.890],
+  "PAICOL": [2.450, -75.776],
+  "AGRADO": [2.259, -75.774],
+  "EL PITAL": [2.266, -75.805],
+  "LA ARGENTINA": [2.198, -75.983],
+  "NATAGA": [2.544, -75.810],
+  "TESALIA": [2.487, -75.731],
+  "SALADOBLANCO": [1.994, -76.049],
+  "ISNOS": [1.938, -76.243],
+  "SAN AGUSTIN": [1.879, -76.274],
+  "OPORAPA": [2.025, -75.996],
+  "PALESTINA": [1.723, -76.137],
+  "PITAL": [2.266, -75.805],
+  "SANTA MARIA": [2.938, -75.586],
+  "COLOMBIA": [3.376, -74.804],
+  "BARAYA": [3.146, -75.053],
+  "VILLAVIEJA": [3.221, -75.218],
+  "ALGEcIRAS": [2.526, -75.315],
+  "ALGECIRAS": [2.526, -75.315],
+  "GUADALUPE": [2.024, -75.755],
+  "ELIAS": [2.014, -75.938],
+  "IQUIRA": [2.647, -75.635]
+};
+
+function initHuilaMap(){
+  if(huilaMap) return;
+  const el = $("mapHuila");
+  if(!el) return;
+
+  huilaMap = L.map(el, { scrollWheelZoom:false, preferCanvas:true })
+    .setView([2.70, -75.40], 8);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    attribution: "&copy; OpenStreetMap"
+  }).addTo(huilaMap);
+
+  huilaLayer = L.layerGroup().addTo(huilaMap);
+}
+
+function updateHuilaMap(){
+  initHuilaMap();
+  if(!huilaMap || !huilaLayer) return;
+
+  huilaLayer.clearLayers();
+
+  // Conteo por municipio (en el filtro actual)
+  const byMun = countBy(FILTERED, r => norm(r.municipio) || "(Sin municipio)");
+
+  const muniKeys = byMun
+    .map(x => x.k)
+    .filter(k => k && k !== "(Sin municipio)");
+
+  $("mapHuilaInfo").textContent = `Municipios en el filtro: ${muniKeys.length}`;
+
+  // Ajuste: si no hay municipios, centrar en Huila
+  if(!muniKeys.length){
+    huilaMap.setView([2.70, -75.40], 8);
+    return;
+  }
+
+  const bounds = [];
+  muniKeys.forEach((muni) => {
+    const key = upper(muni);
+    const coords = HUILA_COORDS[key];
+    if(!coords) return; // si no tenemos coordenadas, lo omitimos
+
+    const count = (byMun.find(x => x.k === muni) || {}).v || 0;
+
+    const marker = L.marker(coords);
+    marker.bindTooltip(`${muni}: ${count.toLocaleString('es-CO')}`, { direction:"top" });
+
+    marker.on("click", () => {
+      // seleccionar municipio y aplicar filtros
+      $("fMunicipio").value = muni;
+      applyFilters();
+      // feedback visual
+      marker.openTooltip();
+    });
+
+    marker.addTo(huilaLayer);
+    bounds.push(coords);
+  });
+
+  if(bounds.length){
+    const b = L.latLngBounds(bounds);
+    huilaMap.fitBounds(b.pad(0.2));
+  }
+}
+
+
+function updateCharts(){
+  // Top municipios
+  const topN = Number($("topN").value || 10);
+  const byMun = countBy(FILTERED, r => norm(r.municipio) || "(Sin municipio)").slice(0, topN);
+  const labelsMun = byMun.map(x => x.k);
+  const dataMun = byMun.map(x => x.v);
+
+  if(cTop) cTop.destroy();
+  cTop = new Chart($("chartTopMunicipios"), {
+    type: "bar",
+    data: { labels: labelsMun, datasets: [{ label: "Registros", data: dataMun }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: (ctx) => ` Registros: ${ctx.parsed.y.toLocaleString('es-CO')}` }
+        }
+      },
+      scales: {
+        x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 0 } },
+        y: { beginAtZero: true }
+      }
+    }
+  });
+  $("chartTopMunicipios").parentElement.style.height = "320px";
+
+  // Pie zona
+  const byZona = countBy(FILTERED, r => norm(r.zona) || "(Sin zona)");
+  const labelsZ = byZona.map(x => x.k);
+  const dataZ = byZona.map(x => x.v);
+  const total = FILTERED.length;
+
+  if(cZona) cZona.destroy();
+  cZona = new Chart($("chartZona"), {
+    type: "pie",
+    data: { labels: labelsZ, datasets: [{ data: dataZ }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: "bottom" },
+        tooltip: {
+          callbacks: { label: (ctx) => tooltipCountWithPct(ctx, total) }
+        }
+      }
+    }
+  });
+  $("chartZona").parentElement.style.height = "320px";
+  // Mapa Huila (clic para filtrar)
+  updateHuilaMap();
+
+}
+
+/* ===========================
+   6) Table (pagination)
+=========================== */
+let currentPage = 1;
+
+$("btnPrev").addEventListener("click", ()=>{
+  if(currentPage > 1){ currentPage--; renderTable(); }
+});
+$("btnNext").addEventListener("click", ()=>{
+  const ps = Number($("pageSize").value);
+  const maxPage = Math.max(1, Math.ceil(Math.min(FILTERED.length, 2000) / ps));
+  if(currentPage < maxPage){ currentPage++; renderTable(); }
+});
+
+function renderTable(){
+  const tbody = $("tbody");
+  tbody.innerHTML = "";
+
+  const cap = 2000; // safety cap
+  const view = FILTERED.slice(0, cap);
+
+  const ps = Number($("pageSize").value);
+  const maxPage = Math.max(1, Math.ceil(view.length / ps));
+  currentPage = Math.min(currentPage, maxPage);
+
+  const start = (currentPage-1)*ps;
+  const end = Math.min(start+ps, view.length);
+  const pageRows = view.slice(start, end);
+
+  for(const r of pageRows){
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="p-3 whitespace-nowrap">${norm(r.year)}</td>
+      <td class="p-3 whitespace-nowrap">${norm(r.no)}</td>
+      <td class="p-3">${escapeHtml(r.nombre)}</td>
+      <td class="p-3 whitespace-nowrap">${escapeHtml(r.cedula)}</td>
+      <td class="p-3 whitespace-nowrap">${escapeHtml(r.celular)}</td>
+      <td class="p-3 whitespace-nowrap">${escapeHtml(r.municipio)}</td>
+      <td class="p-3">${escapeHtml(r.lugar)}</td>
+      <td class="p-3">${escapeHtml(r.direccion)}</td>
+      <td class="p-3 whitespace-nowrap">${escapeHtml(r.mesa)}</td>
+      <td class="p-3">${escapeHtml(r.comuna)}</td>
+      <td class="p-3">${escapeHtml(r.correo)}</td>
+      <td class="p-3 whitespace-nowrap">${escapeHtml(r.zona)}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  $("tableInfo").textContent = `Mostrando ${start+1}-${end} de ${view.length} (página ${currentPage}/${maxPage}) • Límite en pantalla: 2000`;
+}
+
+function escapeHtml(s){
+  return norm(s)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#39;");
+}
+
+function renderEmpty(){
+  $("kpiTotal").textContent = "—";
+  $("kpiMunicipios").textContent = "—";
+  $("kpiLugares").textContent = "—";
+  $("kpiComunas").textContent = "—";
+  $("chipInfo").textContent = "Cargue un Excel para iniciar";
+  $("tbody").innerHTML = "";
+  $("tableInfo").textContent = "";
+  if(cTop) cTop.destroy(), cTop=null;
+  if(cZona) cZona.destroy(), cZona=null;
+  if(cYear) cYear.destroy(), cYear=null;
+}
+
+/* ===========================
+   7) Export (PDF / Excel)
+=========================== */
+$("btnExportPDF").addEventListener("click", ()=>{
+  if(!FILTERED.length){ alert("No hay datos para exportar."); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:"landscape", unit:"pt", format:"a4"});
+
+  const title = "Dashboard Data E - Exportación (filtrado)";
+  doc.setFont("helvetica","bold");
+  doc.setFontSize(14);
+  doc.text(title, 40, 40);
+
+  doc.setFont("helvetica","normal");
+  doc.setFontSize(10);
+  doc.text(`Registros: ${FILTERED.length.toLocaleString('es-CO')}`, 40, 58);
+
+  const rows = FILTERED.slice(0, 5000).map(r => ([
+    r.year, r.no, r.nombre, r.cedula, r.celular, r.municipio, r.lugar, r.direccion, r.mesa, r.comuna, r.correo, r.zona
+  ]));
+
+  doc.autoTable({
+    startY: 75,
+    head: [[ "Año","No.","Nombre","Cédula","Celular","Municipio","Lugar","Dirección","Mesa","Comuna","Correo","Zona" ]],
+    body: rows,
+    styles: { fontSize: 7, cellPadding: 2 },
+    headStyles: { fillColor: [0, 70, 81] },
+    margin: { left: 30, right: 30 },
+  });
+
+  doc.save("data_e_filtrado.pdf");
+});
+
+$("btnExportXLSX").addEventListener("click", ()=>{
+  if(!FILTERED.length){ alert("No hay datos para exportar."); return; }
+  const out = FILTERED.map(r => ({
+    "AÑO": r.year,
+    "NO.": r.no,
+    "NOMBRE": r.nombre,
+    "No. CEDULA": r.cedula,
+    "No. Celular": r.celular,
+    "DEPARTAMENTO": r.departamento,
+    "MUNICIPIO": r.municipio,
+    "LUGAR DE VOTACION": r.lugar,
+    "DIRECCION": r.direccion,
+    "MESA": r.mesa,
+    "COMUNA": r.comuna,
+    "CORREO ELECTRONICO": r.correo,
+    "ZONA": r.zona,
+    "REFIERE": r.refiere,
+    "REFERENTE": r.referente,
+    "OBSERVACIONES": r.observaciones,
+    "DATA": r.data,
+  }));
+  const ws = XLSX.utils.json_to_sheet(out);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Filtrado");
+  XLSX.writeFile(wb, "data_e_filtrado.xlsx");
+});
+
+/* boot */
+renderEmpty();
+setStatus("Cargue un Excel para iniciar (o use el demo).");
+</script>
+
+</body>
+</html>
